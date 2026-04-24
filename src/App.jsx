@@ -555,10 +555,11 @@ function ChatWorld({ entering, onReturnHome }) {
     }
   };
 
-  const pickFAQ = (ans) => {
-    const m = { role:"assistant", content:ans };
-    history.current.push(m);
-    setMessages(p => [...p, m]);
+  const pickFAQ = (question, ans) => {
+    const qm = { role:"user", content:question };
+    const am = { role:"assistant", content:ans };
+    history.current.push(qm, am);
+    setMessages(p => [...p, qm, am]);
     setShowFAQ(false); setFaqSearch("");
     trackEvent("faq_used");
   };
@@ -615,7 +616,7 @@ function ChatWorld({ entering, onReturnHome }) {
           <ResultScreen result={result} onRetake={handleReturnHome} />
         ) : (
           <>
-            <main aria-label="Conversation with Clavex" id="main-content" style={{ flex:1, overflowY:"auto", padding:"24px 18px 8px", display:"flex", flexDirection:"column" }}>
+            <main aria-label="Conversation with Clavex" id="main-content" style={{ flex:1, overflowY:"auto", padding:"24px 18px 8px", display:"flex", flexDirection:"column", minHeight:0 }}>
               {/* Settled messages */}
               {messages.map((msg, i) => (
                 <ChatBubble key={i} msg={msg} isNew={false} isStreaming={false} />
@@ -667,7 +668,7 @@ function ChatWorld({ entering, onReturnHome }) {
                 </div>
                 <input value={faqSearch} onChange={e => setFaqSearch(e.target.value)} placeholder="Search..." aria-label="Search FAQs" style={{ width:"100%", padding:"8px 12px", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.07)", borderRadius:"8px", color:"#fff", fontSize:"13px", fontFamily:"'DM Sans',sans-serif", marginBottom:"10px" }} />
                 {filteredFAQ.length > 0 ? filteredFAQ.map((f,i) => (
-                  <button key={i} onClick={() => pickFAQ(f.a)} aria-label={`Get answer: ${f.q}`}
+                  <button key={i} onClick={() => pickFAQ(f.q, f.a)} aria-label={`Get answer: ${f.q}`}
                     style={{ display:"block", width:"100%", textAlign:"left", padding:"9px 13px", marginBottom:"5px", background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.06)", borderRadius:"9px", color:"rgba(255,255,255,.55)", fontSize:"13px", fontFamily:"'DM Sans',sans-serif", lineHeight:"1.5", cursor:"pointer", transition:"all .18s ease" }}
                     onMouseEnter={e => { e.currentTarget.style.background="rgba(74,144,217,.08)"; e.currentTarget.style.color="#93c5fd"; }}
                     onMouseLeave={e => { e.currentTarget.style.background="rgba(255,255,255,.03)"; e.currentTarget.style.color="rgba(255,255,255,.55)"; }}
