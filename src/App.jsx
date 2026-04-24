@@ -6,30 +6,40 @@ const SERVICES = {
     name: "Brand Strategy",
     tag: "You don't have a growth problem. You have a clarity problem.",
     description: "Without a clear strategy, every effort you make lands softer than it should. Brand Strategy defines exactly who you are, who you're for, and why you're the only choice — so everything else you do starts working harder.",
+    cost: "Right now, every naira you spend on marketing, content, or ads is landing softer than it should — because there's no clear strategy behind it. You're working hard, but the results don't match the effort. The longer this stays unclear, the more you spend fixing symptoms instead of the root problem.",
+    outcome: "Imagine knowing exactly who your brand is for, what makes you the obvious choice, and having every piece of content, every campaign, every conversation pull in the same direction. That's what clarity does — it turns effort into momentum.",
     icon: "◈", color: "#3b82f6",
   },
   brand_identity: {
     name: "Brand Identity",
     tag: "Your work is good. Your brand just isn't showing it.",
     description: "First impressions happen in seconds. If your visual identity doesn't communicate quality instantly, the best clients won't stay long enough to see what you can actually do. Brand Identity fixes that permanently.",
+    cost: "People are judging your business in seconds — before they read a single word. If your visuals say 'amateur,' the best clients scroll past you and go to competitors whose work isn't even as good as yours. Every day without a strong identity is another day premium clients choose someone who just looks the part better.",
+    outcome: "Picture this: a client lands on your page, sees your brand, and immediately thinks 'this is professional.' They trust you before you've even spoken. That's what a proper identity does — it closes the gap between how good you actually are and how good you look.",
     icon: "◉", color: "#6366f1",
   },
   uiux: {
     name: "UI/UX Design",
     tag: "People are visiting but not staying. That's a design problem.",
     description: "A confusing digital experience costs you clients silently — they leave without telling you why. UI/UX Design turns your digital touchpoints into something that feels easy, clear, and trustworthy.",
+    cost: "People are finding you — that's the frustrating part. They're landing on your site or app, looking around, getting confused or frustrated, and leaving. They never tell you why. You're paying for traffic that bounces, and every lost visitor is a client your competitor gets for free.",
+    outcome: "When your digital experience feels effortless, people stay, explore, and take action. They contact you, they buy, they come back. It's the difference between a storefront with locked doors and one that invites people in.",
     icon: "◎", color: "#0ea5e9",
   },
   web_development: {
     name: "Web Development",
     tag: "If you don't exist online properly, you don't exist at all.",
     description: "Your website is your hardest-working salesperson. Without one — or with a broken one — you're losing clients every single day to competitors who simply showed up better online.",
+    cost: "Every time someone searches for what you do and can't find you — or finds a broken, outdated site — they go to the next option. Your competitors don't need to be better than you. They just need to be easier to find and easier to trust online. Right now, they are.",
+    outcome: "A website that works for you means clients find you at 2am, learn what you do, trust you, and reach out — all while you sleep. It's not just a page, it's your most reliable salesperson working 24/7.",
     icon: "◪", color: "#14b8a6",
   },
   social_media: {
     name: "Social Media Design",
     tag: "You're posting but nobody is stopping to look.",
     description: "Scroll stops are earned, not given. If your content blends into the feed, your message never lands no matter how good it is. Social Media Design gives your brand the visual power to stop the scroll and stay memorable.",
+    cost: "You're spending time creating content, but it disappears into the feed. No engagement, no saves, no shares. The message might be great — but if the visual doesn't stop the scroll, nobody ever reads it. All that effort, invisible.",
+    outcome: "When your content looks undeniable, people stop scrolling. They read, they engage, they remember you. Your posts start working like micro-billboards — each one building recognition, trust, and demand without you having to chase anyone.",
     icon: "◫", color: "#f59e0b",
   },
 };
@@ -238,18 +248,21 @@ function ResultScreen({ result, onRetake }) {
       `CLAVEX BRAND DIAGNOSIS`,
       `━━━━━━━━━━━━━━━━━━━━━━`,
       ``,
-      `Service Needed: ${s.name}`,
+      `What You Need: ${s.name}`,
       ``,
       `"${s.tag}"`,
       ``,
       `Your Situation${name}:`,
       result.problem,
       ``,
-      `What This Means:`,
-      s.description,
+      `What This Is Costing You:`,
+      s.cost,
+      ``,
+      `What Changes When You Fix This:`,
+      s.outcome,
       ``,
       `━━━━━━━━━━━━━━━━━━━━━━`,
-      `Ready to fix this? Talk to the Fortex Forge team:`,
+      `Your next step — one conversation:`,
       `WhatsApp: wa.me/2347068811791`,
       `LinkedIn: linkedin.com/company/fortexforge`,
       ``,
@@ -283,7 +296,7 @@ function ResultScreen({ result, onRetake }) {
   };
 
   return (
-    <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column", alignItems:"center", padding:"36px 24px 28px", animation:vis?"resultIn .65s cubic-bezier(.22,1,.36,1) forwards":"none", opacity:0 }}>
+    <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column", alignItems:"center", padding:"36px 24px 28px", minHeight:0, animation:vis?"resultIn .65s cubic-bezier(.22,1,.36,1) forwards":"none", opacity:0 }}>
       <div style={{ fontSize:"10.5px", color:"rgba(255,255,255,.25)", letterSpacing:"0.16em", textTransform:"uppercase", fontFamily:"'DM Sans',sans-serif", marginBottom:"28px", display:"flex", alignItems:"center", gap:"10px" }}>
         <div style={{ width:"24px", height:"1px", background:"rgba(255,255,255,.1)" }}/>
         Diagnosis Complete
@@ -298,26 +311,36 @@ function ResultScreen({ result, onRetake }) {
 
       <p style={{ fontSize:"15px", color:"rgba(255,255,255,.68)", fontFamily:"'DM Sans',sans-serif", fontWeight:"500", lineHeight:"1.65", textAlign:"center", maxWidth:"340px", marginBottom:"18px", fontStyle:"italic" }}>"{s.tag}"</p>
 
+      {/* Section 1: Your Situation — Mirror */}
       <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:"14px", padding:"16px 20px", maxWidth:"390px", width:"100%", marginBottom:"14px" }}>
         <p style={{ fontSize:"10.5px", color:"rgba(255,255,255,.22)", textTransform:"uppercase", letterSpacing:"0.1em", fontFamily:"'DM Sans',sans-serif", marginBottom:"8px" }}>Your situation{name}</p>
         <p style={{ fontSize:"14px", color:"rgba(255,255,255,.55)", fontFamily:"'DM Sans',sans-serif", lineHeight:"1.68" }}>{result.problem}</p>
       </div>
 
-      <div style={{ background:`linear-gradient(135deg,${s.color}0b,${s.color}1c)`, border:`1px solid ${s.color}28`, borderRadius:"14px", padding:"16px 20px", maxWidth:"390px", width:"100%", marginBottom:"12px" }}>
-        <p style={{ fontSize:"13.5px", color:"rgba(255,255,255,.5)", fontFamily:"'DM Sans',sans-serif", lineHeight:"1.72" }}>{s.description}</p>
+      {/* Section 2: What This Is Costing You — Loss Aversion */}
+      <div style={{ background:"rgba(239,68,68,.04)", border:"1px solid rgba(239,68,68,.12)", borderRadius:"14px", padding:"16px 20px", maxWidth:"390px", width:"100%", marginBottom:"14px" }}>
+        <p style={{ fontSize:"10.5px", color:"rgba(239,68,68,.55)", textTransform:"uppercase", letterSpacing:"0.1em", fontFamily:"'DM Sans',sans-serif", marginBottom:"8px", display:"flex", alignItems:"center", gap:"6px" }}>
+          <span style={{ fontSize:"13px" }}>⚠</span> What this is costing you
+        </p>
+        <p style={{ fontSize:"13.5px", color:"rgba(255,255,255,.5)", fontFamily:"'DM Sans',sans-serif", lineHeight:"1.72" }}>{s.cost}</p>
       </div>
 
-      {/* Why Fortex Forge */}
-      <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:"14px", padding:"18px 22px", maxWidth:"390px", width:"100%", marginBottom:"20px" }}>
-        <p style={{ fontSize:"10.5px", color:"rgba(255,255,255,.22)", textTransform:"uppercase", letterSpacing:"0.1em", fontFamily:"'DM Sans',sans-serif", marginBottom:"10px" }}>Why work with Fortex Forge?</p>
-        <p style={{ fontSize:"13.5px", color:"rgba(255,255,255,.52)", fontFamily:"'DM Sans',sans-serif", lineHeight:"1.72", marginBottom:"10px" }}>
-          Clavex was built by Fortex Forge — a creative tech agency that doesn't start with aesthetics. They start with strategy. Every design decision is backed by a reason, which is why their work actually moves the needle.
+      {/* Section 3: What Changes — Future Pacing */}
+      <div style={{ background:`linear-gradient(135deg,${s.color}08,${s.color}16)`, border:`1px solid ${s.color}22`, borderRadius:"14px", padding:"16px 20px", maxWidth:"390px", width:"100%", marginBottom:"20px" }}>
+        <p style={{ fontSize:"10.5px", color:s.color, textTransform:"uppercase", letterSpacing:"0.1em", fontFamily:"'DM Sans',sans-serif", fontWeight:"600", marginBottom:"8px", display:"flex", alignItems:"center", gap:"6px" }}>
+          <span style={{ fontSize:"13px" }}>✦</span> What changes when you fix this
         </p>
-        <p style={{ fontSize:"13.5px", color:"rgba(255,255,255,.52)", fontFamily:"'DM Sans',sans-serif", lineHeight:"1.72", marginBottom:"10px" }}>
-          They specialize in exactly what you need right now: <span style={{ color:s.color, fontWeight:"600" }}>{s.name}</span>. From brand strategy to full web builds, they've helped businesses go from invisible to undeniable.
+        <p style={{ fontSize:"13.5px", color:"rgba(255,255,255,.55)", fontFamily:"'DM Sans',sans-serif", lineHeight:"1.72" }}>{s.outcome}</p>
+      </div>
+
+      {/* Section 4: Your Next Step — CTA Bridge */}
+      <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:"14px", padding:"16px 20px", maxWidth:"390px", width:"100%", marginBottom:"16px", textAlign:"center" }}>
+        <p style={{ fontSize:"10.5px", color:"rgba(255,255,255,.22)", textTransform:"uppercase", letterSpacing:"0.1em", fontFamily:"'DM Sans',sans-serif", marginBottom:"8px" }}>Your next step</p>
+        <p style={{ fontSize:"14px", color:"rgba(255,255,255,.52)", fontFamily:"'DM Sans',sans-serif", lineHeight:"1.68", marginBottom:"4px" }}>
+          You don't need to commit to anything right now.
         </p>
-        <p style={{ fontSize:"13px", color:"rgba(255,255,255,.35)", fontFamily:"'DM Sans',sans-serif", lineHeight:"1.68", fontStyle:"italic" }}>
-          Every day this stays unfixed is another day the right clients choose someone else. A single conversation with the Fortex Forge team could change the trajectory of your brand.
+        <p style={{ fontSize:"14px", color:"rgba(255,255,255,.52)", fontFamily:"'DM Sans',sans-serif", lineHeight:"1.68" }}>
+          Just one conversation with the Fortex Forge team to see if this is worth fixing. No pitch, no pressure — just clarity.
         </p>
       </div>
 
@@ -327,7 +350,7 @@ function ResultScreen({ result, onRetake }) {
         style={{ display:"block", width:"100%", maxWidth:"390px", padding:"16px 24px", background:"linear-gradient(145deg,#0e2a4a,#1648a0)", border:"1px solid rgba(74,144,217,.35)", borderRadius:"14px", color:"#fff", fontSize:"15px", fontWeight:"600", fontFamily:"'DM Sans',sans-serif", textAlign:"center", textDecoration:"none", boxShadow:"0 8px 30px rgba(22,72,160,.45)", transition:"all .25s ease", letterSpacing:"0.02em", marginBottom:"12px" }}
         onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px)"; e.currentTarget.style.boxShadow="0 14px 38px rgba(22,72,160,.55)"; }}
         onMouseLeave={e => { e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.boxShadow="0 8px 30px rgba(22,72,160,.45)"; }}
-      >Chat on WhatsApp →</a>
+      >Start a Conversation →</a>
 
       {/* Export buttons */}
       <div style={{ display:"flex", gap:"10px", maxWidth:"390px", width:"100%", marginBottom:"12px" }}>
@@ -581,7 +604,7 @@ function ChatWorld({ entering, onReturnHome }) {
       <div style={{ position:"fixed", bottom:"-18%", left:"-6%", width:"360px", height:"360px", borderRadius:"50%", background:"radial-gradient(circle,rgba(20,60,130,.22) 0%,transparent 65%)", pointerEvents:"none", animation:"orb2 12s ease-in-out infinite", zIndex:0 }} />
       <div style={{ position:"fixed", inset:0, backgroundImage:"radial-gradient(circle at 1px 1px,rgba(255,255,255,.015) 1px,transparent 0)", backgroundSize:"32px 32px", pointerEvents:"none", zIndex:0 }} />
 
-      <div style={{ width:"100%", maxWidth:"660px", height:"100vh", display:"flex", flexDirection:"column", position:"relative", zIndex:1 }}>
+      <div style={{ width:"100%", maxWidth:"660px", height:"100%", display:"flex", flexDirection:"column", position:"relative", zIndex:1 }}>
 
         {/* Header */}
         <header style={{ padding:"13px 20px", borderBottom:"1px solid rgba(255,255,255,.055)", background:"rgba(7,13,24,.9)", backdropFilter:"blur(24px)", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
