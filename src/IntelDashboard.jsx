@@ -58,7 +58,13 @@ export default function IntelDashboard() {
           loadLeads(password);
         }
       } else {
-        setAuthError("Wrong password. Try again.");
+        // Show the actual server error for debugging
+        let errMsg = "Wrong password. Try again.";
+        try {
+          const errData = await res.json();
+          if (errData.error) errMsg = errData.error;
+        } catch {}
+        setAuthError(`${errMsg} (${res.status})`);
       }
     } catch {
       setAuthError("Connection error. Try again.");
