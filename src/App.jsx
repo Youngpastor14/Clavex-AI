@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import IntelDashboard from "./IntelDashboard";
 
 // ─── SERVICES ────────────────────────────────────────────────────────────────
 const SERVICES = {
@@ -227,7 +228,7 @@ function LandingPage({ onEnter, exiting }) {
 }
 
 // ─── RESULT SCREEN ────────────────────────────────────────────────────────────
-function ResultScreen({ result, onRetake }) {
+function ResultScreen({ result, sessionId, onRetake }) {
   const s = SERVICES[result.service] || SERVICES.brand_strategy;
   const name = result.first_name ? `, ${result.first_name}` : "";
   const [vis, setVis] = useState(false);
@@ -236,7 +237,18 @@ function ResultScreen({ result, onRetake }) {
 
   const handleWhatsApp = () => {
     trackEvent("whatsapp_clicked", { service: result.service });
+    // Mark lead as whatsapp-clicked (fire-and-forget)
+    if (sessionId) {
+      fetch(`/api/leads/${sessionId}?password=${encodeURIComponent("Admin1404")}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ whatsapp_clicked: true }),
+      }).catch(() => {});
+    }
   };
+
+  // Build WhatsApp message with session link for team
+  const waText = `Hi, I just used Clavex and my diagnosis says I need ${s.name}.\n\nMy situation: ${result.problem}\n\nCan we talk about how to fix this?${sessionId ? `\n\nSession: https://clavex-ai.vercel.app/intel?id=${sessionId}` : ""}`;
 
   const handleLinkedIn = () => {
     trackEvent("linkedin_clicked", { service: result.service });
@@ -344,7 +356,7 @@ function ResultScreen({ result, onRetake }) {
         </p>
       </div>
 
-      <a href={`https://wa.me/2347068811791?text=${encodeURIComponent(`Hi, I just used Clavex and my diagnosis says I need ${s.name}.\n\nMy situation: ${result.problem}\n\nCan we talk about how to fix this?`)}`} target="_blank" rel="noopener noreferrer" aria-label="Chat on WhatsApp"
+      <a href={`https://wa.me/2347068811791?text=${encodeURIComponent(waText)}`} target="_blank" rel="noopener noreferrer" aria-label="Chat on WhatsApp"
         id="cta-whatsapp"
         onClick={handleWhatsApp}
         style={{ display:"block", width:"100%", maxWidth:"390px", padding:"16px 24px", background:"linear-gradient(145deg,#0e2a4a,#1648a0)", border:"1px solid rgba(74,144,217,.35)", borderRadius:"14px", color:"#fff", fontSize:"15px", fontWeight:"600", fontFamily:"'DM Sans',sans-serif", textAlign:"center", textDecoration:"none", boxShadow:"0 8px 30px rgba(22,72,160,.45)", transition:"all .25s ease", letterSpacing:"0.02em", marginBottom:"12px" }}
@@ -399,11 +411,27 @@ function ChatWorld({ entering, onReturnHome }) {
   const [showFAQ, setShowFAQ] = useState(false);
   const [faqSearch, setFaqSearch] = useState("");
   const [result, setResult] = useState(null);
+  const [sessionId, setSessionId] = useState(null);
   const [restored, setRestored] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const taRef = useRef(null);
   const history = useRef([]);
+
+  // ── LEAD CAPTURE (fire-and-forget on diagnosis complete) ───────────
+  const captureLead = useCallback(async (conversation, parsedResult) => {
+    try {
+      const res = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation, result: parsedResult }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.session_id) setSessionId(data.session_id);
+      }
+    } catch (_) {} // silent — never block the user
+  }, []);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, streamingContent, loading]);
 
@@ -553,6 +581,8 @@ function ChatWorld({ entering, onReturnHome }) {
         setLoading(false);
         trackEvent("diagnosis_complete", { service: parsed.service });
         trackEvent("service_diagnosed", { service: parsed.service });
+        // Capture lead data silently in the background
+        captureLead([...history.current], parsed);
         return;
       }
 
@@ -636,7 +666,7 @@ function ChatWorld({ entering, onReturnHome }) {
         </header>
 
         {result ? (
-          <ResultScreen result={result} onRetake={handleReturnHome} />
+          <ResultScreen result={result} sessionId={sessionId} onRetake={handleReturnHome} />
         ) : (
           <>
             <main aria-label="Conversation with Clavex" id="main-content" style={{ flex:1, overflowY:"auto", padding:"24px 18px 8px", display:"flex", flexDirection:"column", minHeight:0 }}>
@@ -756,6 +786,9 @@ export default function App() {
   const [landingExiting, setLandingExiting] = useState(false);
   const [chatEntering, setChatEntering] = useState(false);
 
+  // Check if we're on the /intel route
+  const isIntelRoute = window.location.pathname === "/intel";
+
   const enterChat = () => {
     trackEvent("chat_started");
     setLandingExiting(true);
@@ -771,6 +804,16 @@ export default function App() {
     setWorld("landing");
     setLandingExiting(false);
   };
+
+  // If /intel route, render the dashboard
+  if (isIntelRoute) {
+    return (
+      <>
+        <style>{GLOBAL_STYLES}</style>
+        <IntelDashboard />
+      </>
+    );
+  }
 
   return (
     <>

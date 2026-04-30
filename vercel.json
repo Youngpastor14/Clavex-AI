@@ -8,6 +8,8 @@
     }
   },
   "rewrites": [
+    { "source": "/api/leads/:id", "destination": "/api/leads/[id]" },
+    { "source": "/api/leads", "destination": "/api/leads" },
     { "source": "/api/analytics/stats", "destination": "/api/analytics/stats" },
     { "source": "/api/analytics", "destination": "/api/analytics" },
     { "source": "/api/chat", "destination": "/api/chat" },
