@@ -4,6 +4,7 @@
 
 require("dotenv").config();
 
+const crypto = require("crypto");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -16,13 +17,91 @@ const { logEvent, getStats } = require("./analytics");
 const app = express();
 const PORT = process.env.PORT || 3001;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const ANALYTICS_PASSWORD = process.env.ANALYTICS_PASSWORD || "Admin1404";
+const ANALYTICS_PASSWORD = process.env.ANALYTICS_PASSWORD;
 
+// ─── FAIL CLOSED: require env vars ─────────────────────────────────────────
 if (!GROQ_API_KEY) {
   console.error("\n❌ GROQ_API_KEY is not set in .env file!");
   console.error("   Get your free key at: https://console.groq.com/\n");
   process.exit(1);
 }
+
+if (!ANALYTICS_PASSWORD) {
+  console.error("\n❌ ANALYTICS_PASSWORD is not set in .env file!");
+  console.error("   Set a strong password (20+ chars, mixed case, numbers, symbols).\n");
+  process.exit(1);
+}
+
+// ─── SECURITY HELPERS ───────────────────────────────────────────────────────
+
+/**
+ * Timing-safe password comparison. Fails closed if password is missing.
+ */
+function verifyPassword(provided) {
+  if (!ANALYTICS_PASSWORD || !provided || typeof provided !== "string") {
+    return false;
+  }
+  const expected = Buffer.from(ANALYTICS_PASSWORD, "utf-8");
+  const actual = Buffer.from(provided, "utf-8");
+  if (expected.length !== actual.length) {
+    crypto.timingSafeEqual(expected, Buffer.alloc(expected.length));
+    return false;
+  }
+  return crypto.timingSafeEqual(expected, actual);
+}
+
+/**
+ * Extract password from Authorization header: Bearer <password>
+ */
+function getPasswordFromHeader(req) {
+  const authHeader = req.headers["authorization"] || "";
+  if (authHeader.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+  return null;
+}
+
+/**
+ * HTML-escape a string to prevent XSS in server-rendered HTML.
+ */
+function escapeHtml(str) {
+  if (typeof str !== "string") str = String(str ?? "");
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Brute-force rate limiter for auth endpoints.
+ */
+const authAttempts = new Map();
+const AUTH_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_MAX_ATTEMPTS = 5;
+
+function checkAuthRateLimit(ip) {
+  const now = Date.now();
+  if (!authAttempts.has(ip)) authAttempts.set(ip, { attempts: [] });
+  const data = authAttempts.get(ip);
+  data.attempts = data.attempts.filter(t => now - t < AUTH_WINDOW_MS);
+  if (data.attempts.length >= AUTH_MAX_ATTEMPTS) return { blocked: true };
+  return { blocked: false };
+}
+
+function recordAuthFailure(ip) {
+  if (!authAttempts.has(ip)) authAttempts.set(ip, { attempts: [] });
+  authAttempts.get(ip).attempts.push(Date.now());
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, data] of authAttempts) {
+    data.attempts = data.attempts.filter(t => now - t < AUTH_WINDOW_MS);
+    if (data.attempts.length === 0) authAttempts.delete(ip);
+  }
+}, 10 * 60 * 1000);
 
 // ─── SYSTEM PROMPT (server-side only — never sent to browser) ────────────────
 const SYSTEM_PROMPT = `You are Clavex, an AI-powered brand diagnostic tool created by Fortex Forge — a creative tech agency specializing in Brand Strategy, Brand Identity, UI/UX Design, Web Development, and Social Media Design. Tagline: "Forging Absolute Clarity."
@@ -119,13 +198,14 @@ const GUARDRAIL_PROMPT = `REMINDER: You are Clavex, a diagnostic tool built by F
 // ─── MIDDLEWARE ──────────────────────────────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: false, // CSP handled in HTML meta tag
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
 }));
 
 app.use(cors({
   origin: process.env.NODE_ENV === "production"
-    ? true // allow same-origin in production
-    : ["http://localhost:3000", "http://127.0.0.1:3000"],
-  methods: ["GET", "POST"],
+    ? ["https://clavex-ai.vercel.app"]
+    : ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000"],
+  methods: ["GET", "POST", "PATCH"],
 }));
 
 app.use(express.json({ limit: "50kb" }));
@@ -157,11 +237,13 @@ app.post("/api/chat", rateLimiter, async (req, res) => {
       return res.status(400).json({ error: validation.error });
     }
 
-    // Sanitize user messages
-    const sanitizedMessages = messages.map(msg => ({
-      role: msg.role,
-      content: msg.role === "user" ? sanitize(msg.content) : msg.content,
-    }));
+    // Sanitize user messages — strictly filter to user/assistant roles only
+    const sanitizedMessages = messages
+      .filter(msg => msg.role === "user" || msg.role === "assistant")
+      .map(msg => ({
+        role: msg.role,
+        content: msg.role === "user" ? sanitize(msg.content) : msg.content,
+      }));
 
     // Build the full message array with system prompt + guardrail
     const fullMessages = [
@@ -240,17 +322,27 @@ app.post("/api/analytics", (req, res) => {
   res.json(result);
 });
 
-// GET /api/analytics/stats — View aggregated stats (password-protected)
+// GET /api/analytics/stats — View aggregated stats (password-protected via Authorization header)
 app.get("/api/analytics/stats", async (req, res) => {
-  const password = req.query.password || req.headers["x-analytics-password"];
+  const ip = req.ip || "unknown";
 
-  if (password !== ANALYTICS_PASSWORD) {
-    return res.status(401).json({ error: "Unauthorized. Provide ?password=YOUR_PASSWORD" });
+  // Brute-force rate limiting
+  const authRate = checkAuthRateLimit(ip);
+  if (authRate.blocked) {
+    return res.status(429).json({ error: "Too many failed attempts. Try again later." });
+  }
+
+  // Password via Authorization header only
+  const password = getPasswordFromHeader(req);
+
+  if (!verifyPassword(password)) {
+    recordAuthFailure(ip);
+    return res.status(401).json({ error: "Unauthorized." });
   }
 
   const stats = await getStats();
 
-  // Return formatted HTML dashboard
+  // Return formatted HTML dashboard — all dynamic values HTML-escaped
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -275,48 +367,48 @@ app.get("/api/analytics/stats", async (req, res) => {
 </head>
 <body>
   <h1>📊 Clavex Analytics</h1>
-  <p class="subtitle">Generated ${stats.generatedAt || "now"}</p>
+  <p class="subtitle">Generated ${escapeHtml(stats.generatedAt || "now")}</p>
 
   <div class="grid">
     <div class="card">
       <div class="card-label">Total Events</div>
-      <div class="card-value">${stats.overview?.totalEvents || 0}</div>
+      <div class="card-value">${escapeHtml(String(stats.overview?.totalEvents || 0))}</div>
     </div>
     <div class="card">
       <div class="card-label">Chats Started</div>
-      <div class="card-value">${stats.funnel?.chats_started || 0}</div>
+      <div class="card-value">${escapeHtml(String(stats.funnel?.chats_started || 0))}</div>
     </div>
     <div class="card">
       <div class="card-label">Diagnoses Complete</div>
-      <div class="card-value">${stats.funnel?.diagnoses_complete || 0}</div>
+      <div class="card-value">${escapeHtml(String(stats.funnel?.diagnoses_complete || 0))}</div>
     </div>
     <div class="card">
       <div class="card-label">WhatsApp Clicks</div>
-      <div class="card-value">${stats.funnel?.whatsapp_clicks || 0}</div>
+      <div class="card-value">${escapeHtml(String(stats.funnel?.whatsapp_clicks || 0))}</div>
     </div>
   </div>
 
   <h2>Conversion Funnel</h2>
   <table>
     <tr><th>Stage</th><th>Count</th></tr>
-    ${Object.entries(stats.funnel || {}).map(([k, v]) => `<tr><td>${k.replace(/_/g, " ")}</td><td>${v}</td></tr>`).join("")}
+    ${Object.entries(stats.funnel || {}).map(([k, v]) => `<tr><td>${escapeHtml(k.replace(/_/g, " "))}</td><td>${escapeHtml(String(v))}</td></tr>`).join("")}
   </table>
 
   <h2>Service Distribution</h2>
   <table>
     <tr><th>Service</th><th>Diagnosed</th></tr>
-    ${Object.entries(stats.serviceDistribution || {}).map(([k, v]) => `<tr><td>${k.replace(/_/g, " ")}</td><td>${v}</td></tr>`).join("")}
+    ${Object.entries(stats.serviceDistribution || {}).map(([k, v]) => `<tr><td>${escapeHtml(k.replace(/_/g, " "))}</td><td>${escapeHtml(String(v))}</td></tr>`).join("")}
   </table>
 
   <h2>Today's Activity</h2>
   <table>
     <tr><th>Event</th><th>Count</th></tr>
-    ${Object.entries(stats.overview?.today || {}).map(([k, v]) => `<tr><td>${k.replace(/_/g, " ")}</td><td>${v}</td></tr>`).join("")}
+    ${Object.entries(stats.overview?.today || {}).map(([k, v]) => `<tr><td>${escapeHtml(k.replace(/_/g, " "))}</td><td>${escapeHtml(String(v))}</td></tr>`).join("")}
     ${Object.keys(stats.overview?.today || {}).length === 0 ? "<tr><td colspan='2' style='color:rgba(255,255,255,.2);text-align:center;'>No events today</td></tr>" : ""}
   </table>
 
   <h2>Raw Stats (JSON)</h2>
-  <pre>${JSON.stringify(stats, null, 2)}</pre>
+  <pre>${escapeHtml(JSON.stringify(stats, null, 2))}</pre>
 </body>
 </html>`;
 
@@ -336,6 +428,6 @@ if (process.env.NODE_ENV === "production") {
 // ─── START ───────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n🚀 Clavex API server running on http://localhost:${PORT}`);
-  console.log(`📊 Analytics dashboard: http://localhost:${PORT}/api/analytics/stats?password=****`);
-  console.log(`🔑 Groq API key: ${GROQ_API_KEY.slice(0, 8)}...${GROQ_API_KEY.slice(-4)} (hidden)\n`);
+  console.log(`📊 Analytics dashboard: http://localhost:${PORT}/api/analytics/stats`);
+  console.log(`🔑 Groq API key loaded (hidden)\n`);
 });

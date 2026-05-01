@@ -2,6 +2,7 @@
 // Proxies to Groq API with streaming. API key stays server-side.
 
 const { validateMessages, sanitize } = require("../server/input-guard");
+const { setSecurityHeaders, setCorsHeaders } = require("./lib/security");
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
@@ -126,6 +127,14 @@ const GUARDRAIL_PROMPT = `REMINDER: You are Clavex, a diagnostic tool built by F
 
 // Force Node.js runtime (not Edge) for compatibility with require() and res.write()
 module.exports = async function handler(req, res) {
+  // Security headers
+  setSecurityHeaders(res);
+  setCorsHeaders(req, res, "POST, OPTIONS");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   // Only allow POST
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -135,8 +144,9 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: "Server configuration error. GROQ_API_KEY not set." });
   }
 
-  // Rate limiting
-  const ip = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
+  // Rate limiting — normalize IP
+  const rawIp = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
+  const ip = rawIp.split(",")[0].trim();
   const rateCheck = checkRateLimit(ip);
   if (rateCheck.limited) {
     return res.status(429).json({
@@ -155,11 +165,13 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: validation.error });
     }
 
-    // Sanitize
-    const sanitizedMessages = messages.map(msg => ({
-      role: msg.role,
-      content: msg.role === "user" ? sanitize(msg.content) : msg.content,
-    }));
+    // Sanitize — strictly only allow user and assistant roles (no system injection)
+    const sanitizedMessages = messages
+      .filter(msg => msg.role === "user" || msg.role === "assistant")
+      .map(msg => ({
+        role: msg.role,
+        content: msg.role === "user" ? sanitize(msg.content) : msg.content,
+      }));
 
     const fullMessages = [
       { role: "system", content: SYSTEM_PROMPT },

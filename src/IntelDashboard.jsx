@@ -26,6 +26,19 @@ const card = {
   padding: "20px",
 };
 
+// ─── SECURE FETCH HELPER ────────────────────────────────────────────────────
+// Sends password via Authorization header instead of URL query params
+function securedFetch(url, password, options = {}) {
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...options.headers,
+      "Authorization": `Bearer ${password}`,
+      "Content-Type": "application/json",
+    },
+  });
+}
+
 // ─── INTEL DASHBOARD ────────────────────────────────────────────────────────
 export default function IntelDashboard() {
   const [authed, setAuthed] = useState(false);
@@ -47,10 +60,11 @@ export default function IntelDashboard() {
     setAuthError("");
     setLoading(true);
     try {
-      const res = await fetch(`/api/leads?password=${encodeURIComponent(password)}&limit=1`);
+      const res = await securedFetch(`/api/leads?limit=1`, password);
       if (res.ok) {
         setAuthed(true);
         setStoredPw(password);
+        setPassword(""); // Clear from state after storing
         // If direct ID link, load that lead
         if (directId) {
           loadLeadDetail(directId, password);
@@ -76,22 +90,22 @@ export default function IntelDashboard() {
   const loadLeads = useCallback(async (pw) => {
     setLoading(true);
     try {
-      let url = `/api/leads?password=${encodeURIComponent(pw)}&limit=100`;
+      let url = `/api/leads?limit=100`;
       if (statusFilter !== "all") url += `&status=${statusFilter}`;
-      const res = await fetch(url);
+      const res = await securedFetch(url, pw || storedPw);
       if (res.ok) {
         const data = await res.json();
         setLeads(data.leads || []);
       }
     } catch {}
     setLoading(false);
-  }, [statusFilter]);
+  }, [statusFilter, storedPw]);
 
   // ── LOAD SINGLE LEAD ─────────────────────────────────────────────────
   const loadLeadDetail = async (id, pw) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/leads/${id}?password=${encodeURIComponent(pw || storedPw)}`);
+      const res = await securedFetch(`/api/leads/${id}`, pw || storedPw);
       if (res.ok) {
         const data = await res.json();
         setSelectedLead(data.lead);
@@ -103,9 +117,8 @@ export default function IntelDashboard() {
   // ── UPDATE STATUS ────────────────────────────────────────────────────
   const updateStatus = async (id, newStatus) => {
     try {
-      await fetch(`/api/leads/${id}?password=${encodeURIComponent(storedPw)}`, {
+      await securedFetch(`/api/leads/${id}`, storedPw, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
       // Update local state
@@ -137,6 +150,7 @@ export default function IntelDashboard() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               placeholder="Enter password"
+              autoComplete="current-password"
               style={{ width: "100%", padding: "13px 16px", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: "10px", color: "#fff", fontSize: "14px", fontFamily: FONT, marginBottom: "12px", outline: "none" }}
             />
             {authError && <p style={{ color: "#f87171", fontSize: "12px", marginBottom: "10px" }}>{authError}</p>}

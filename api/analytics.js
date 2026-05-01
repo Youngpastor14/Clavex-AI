@@ -2,8 +2,8 @@
 // Logs analytics events. On Vercel, filesystem is read-only and ephemeral,
 // so we accept the event and return success. Analytics data won't persist
 // between cold starts — this is a known trade-off on Vercel's free tier.
-// For persistent analytics, consider using a free database (e.g., Vercel KV,
-// Supabase, or PlanetScale) in the future.
+
+const { setSecurityHeaders, setCorsHeaders } = require("./lib/security");
 
 const VALID_EVENTS = [
   "page_view",
@@ -19,14 +19,18 @@ const VALID_EVENTS = [
   "privacy_accepted",
 ];
 
+// Maximum size for event.data payload (1KB)
+const MAX_DATA_SIZE = 1024;
+
 // In-memory store (resets on cold start — best-effort on serverless)
 const logs = [];
 
 module.exports = async function handler(req, res) {
-  // CORS headers
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-analytics-password");
+  // Security headers on every response
+  setSecurityHeaders(res);
+
+  // Restricted CORS — only allow our own domains
+  setCorsHeaders(req, res, "POST, OPTIONS");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -36,8 +40,14 @@ module.exports = async function handler(req, res) {
   if (req.method === "POST") {
     const event = req.body;
 
-    if (!event.type || !VALID_EVENTS.includes(event.type)) {
+    if (!event || !event.type || !VALID_EVENTS.includes(event.type)) {
       return res.status(400).json({ success: false, error: "Invalid event type" });
+    }
+
+    // Validate data payload size to prevent abuse
+    const dataStr = JSON.stringify(event.data || {});
+    if (dataStr.length > MAX_DATA_SIZE) {
+      return res.status(400).json({ success: false, error: "Event data too large." });
     }
 
     const entry = {

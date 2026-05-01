@@ -3,9 +3,81 @@
 // GET:  List all leads (password-protected, for Fortex Forge team)
 
 const { getSupabase } = require("../lib/supabase");
+const {
+  verifyPassword,
+  getPasswordFromHeader,
+  setSecurityHeaders,
+  setCorsHeaders,
+  checkAuthRateLimit,
+  recordAuthFailure,
+} = require("../lib/security");
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const ANALYTICS_PASSWORD = process.env.ANALYTICS_PASSWORD || "Admin1404";
+
+// ─── RATE LIMITER FOR POST (lead creation) ─────────────────────────────────
+const postStore = new Map();
+const POST_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const POST_MAX_REQUESTS = 5; // max 5 lead submissions per 10 min per IP
+
+function checkPostRateLimit(ip) {
+  const now = Date.now();
+  if (!postStore.has(ip)) postStore.set(ip, { timestamps: [] });
+  const data = postStore.get(ip);
+  data.timestamps = data.timestamps.filter(t => now - t < POST_WINDOW_MS);
+  if (data.timestamps.length >= POST_MAX_REQUESTS) {
+    return { limited: true };
+  }
+  data.timestamps.push(now);
+  return { limited: false };
+}
+
+// Clean up periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, data] of postStore) {
+    data.timestamps = data.timestamps.filter(t => now - t < POST_WINDOW_MS);
+    if (data.timestamps.length === 0) postStore.delete(ip);
+  }
+}, 10 * 60 * 1000);
+
+// ─── INPUT VALIDATION ──────────────────────────────────────────────────────
+const VALID_SERVICES = ["brand_strategy", "brand_identity", "uiux", "web_development", "social_media"];
+const MAX_CONVERSATION_MESSAGES = 40;
+const MAX_MESSAGE_CONTENT_LENGTH = 2000;
+
+function validateLeadInput(conversation, result) {
+  if (!conversation || !Array.isArray(conversation) || conversation.length === 0) {
+    return { valid: false, error: "Missing or invalid conversation data." };
+  }
+
+  if (conversation.length > MAX_CONVERSATION_MESSAGES) {
+    return { valid: false, error: "Conversation too long." };
+  }
+
+  // Validate each message structure
+  for (const msg of conversation) {
+    if (!msg.role || !["user", "assistant"].includes(msg.role)) {
+      return { valid: false, error: "Invalid message format in conversation." };
+    }
+    if (typeof msg.content !== "string" || msg.content.length > MAX_MESSAGE_CONTENT_LENGTH) {
+      return { valid: false, error: "Invalid message content in conversation." };
+    }
+  }
+
+  if (!result || !result.service || !VALID_SERVICES.includes(result.service)) {
+    return { valid: false, error: "Missing or invalid result data." };
+  }
+
+  if (result.first_name && (typeof result.first_name !== "string" || result.first_name.length > 100)) {
+    return { valid: false, error: "Invalid first name." };
+  }
+
+  if (result.problem && (typeof result.problem !== "string" || result.problem.length > 500)) {
+    return { valid: false, error: "Invalid problem summary." };
+  }
+
+  return { valid: true };
+}
 
 // ─── BRAND INTEL EXTRACTION PROMPT ──────────────────────────────────────────
 const EXTRACT_PROMPT = `You are a data extraction assistant. Given a conversation between a brand diagnostic AI (Clavex) and a business owner, extract structured brand intelligence.
@@ -82,38 +154,51 @@ async function extractBrandIntel(conversation) {
 
 // ─── HANDLER ────────────────────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
-  // CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  // Security headers
+  setSecurityHeaders(res);
+
+  // Restricted CORS
+  setCorsHeaders(req, res, "GET, POST, OPTIONS");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
+  const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
+
   // ── POST: Save a new lead ──────────────────────────────────────────────
   if (req.method === "POST") {
+    // Rate limit lead creation
+    const postRate = checkPostRateLimit(ip);
+    if (postRate.limited) {
+      return res.status(429).json({ error: "Too many submissions. Please try again later." });
+    }
+
     try {
       const { conversation, result } = req.body;
 
-      // Validate
-      if (!conversation || !Array.isArray(conversation) || conversation.length === 0) {
-        return res.status(400).json({ error: "Missing or invalid conversation data." });
-      }
-      if (!result || !result.service) {
-        return res.status(400).json({ error: "Missing or invalid result data." });
+      // Validate input structure and content
+      const validation = validateLeadInput(conversation, result);
+      if (!validation.valid) {
+        return res.status(400).json({ error: validation.error });
       }
 
+      // Strip to only safe fields from conversation messages
+      const safeConversation = conversation.map(m => ({
+        role: m.role,
+        content: m.content,
+      }));
+
       // Extract structured brand intel (fire async, but we wait for it)
-      const brandIntel = await extractBrandIntel(conversation);
+      const brandIntel = await extractBrandIntel(safeConversation);
 
       // Save to Supabase
       const supabase = getSupabase();
       const { data, error } = await supabase.from("clavex_leads").insert({
-        first_name: result.first_name || null,
+        first_name: result.first_name ? String(result.first_name).slice(0, 100) : null,
         service: result.service,
-        problem_summary: result.problem || null,
-        full_conversation: conversation,
+        problem_summary: result.problem ? String(result.problem).slice(0, 500) : null,
+        full_conversation: safeConversation,
         brand_intel: brandIntel,
       }).select("id").single();
 
@@ -134,9 +219,16 @@ module.exports = async function handler(req, res) {
 
   // ── GET: List all leads (password-protected) ──────────────────────────
   if (req.method === "GET") {
-    const password = req.query.password || req.headers["x-analytics-password"];
-    if (password !== ANALYTICS_PASSWORD) {
-      return res.status(401).json({ error: "Unauthorized. Provide ?password=YOUR_PASSWORD" });
+    // Brute-force rate limiting
+    const authRate = checkAuthRateLimit(ip);
+    if (authRate.blocked) {
+      return res.status(429).json({ error: "Too many failed attempts. Try again later." });
+    }
+
+    const password = getPasswordFromHeader(req);
+    if (!verifyPassword(password)) {
+      recordAuthFailure(ip);
+      return res.status(401).json({ error: "Unauthorized." });
     }
 
     try {

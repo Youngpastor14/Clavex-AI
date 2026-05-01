@@ -2,17 +2,40 @@
 // Returns analytics dashboard. On Vercel serverless, data is ephemeral
 // (resets on cold starts). For production analytics, integrate a database.
 
-const ANALYTICS_PASSWORD = process.env.ANALYTICS_PASSWORD || "Admin1404";
+const {
+  verifyPassword,
+  getPasswordFromHeader,
+  setSecurityHeaders,
+  setCorsHeaders,
+  escapeHtml,
+  checkAuthRateLimit,
+  recordAuthFailure,
+} = require("../lib/security");
 
 module.exports = async function handler(req, res) {
+  setSecurityHeaders(res);
+  setCorsHeaders(req, res, "GET, OPTIONS");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const password = req.query.password || req.headers["x-analytics-password"];
+  // Brute-force rate limiting
+  const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
+  const authRate = checkAuthRateLimit(ip);
+  if (authRate.blocked) {
+    return res.status(429).json({ error: "Too many failed attempts. Try again later." });
+  }
 
-  if (password !== ANALYTICS_PASSWORD) {
-    return res.status(401).json({ error: "Unauthorized. Provide ?password=YOUR_PASSWORD" });
+  // Password via Authorization header only — never URL query
+  const password = getPasswordFromHeader(req);
+  if (!verifyPassword(password)) {
+    recordAuthFailure(ip);
+    return res.status(401).json({ error: "Unauthorized." });
   }
 
   // On Vercel serverless, we can't share state between functions,
@@ -60,7 +83,7 @@ module.exports = async function handler(req, res) {
 </head>
 <body>
   <h1>📊 Clavex Analytics</h1>
-  <p class="subtitle">Generated ${stats.generatedAt}</p>
+  <p class="subtitle">Generated ${escapeHtml(stats.generatedAt)}</p>
 
   <div class="notice">
     <h2>⚡ Vercel Serverless Mode</h2>
@@ -82,7 +105,7 @@ module.exports = async function handler(req, res) {
     </div>
   </div>
 
-  <pre>${JSON.stringify(stats, null, 2)}</pre>
+  <pre>${escapeHtml(JSON.stringify(stats, null, 2))}</pre>
 </body>
 </html>`;
 

@@ -237,12 +237,12 @@ function ResultScreen({ result, sessionId, onRetake }) {
 
   const handleWhatsApp = () => {
     trackEvent("whatsapp_clicked", { service: result.service });
-    // Mark lead as whatsapp-clicked (fire-and-forget)
+    // Mark lead as whatsapp-clicked (uses dedicated tracking endpoint, no auth needed)
     if (sessionId) {
-      fetch(`/api/leads/${sessionId}?password=${encodeURIComponent("Admin1404")}`, {
+      fetch(`/api/leads/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ whatsapp_clicked: true }),
+        body: JSON.stringify({ whatsapp_clicked: true, _track: true }),
       }).catch(() => {});
     }
   };
